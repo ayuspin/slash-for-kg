@@ -3,7 +3,9 @@ import json
 from flask import jsonify
 import hmac
 import hashlib
-import time
+# for test only
+from flask import Flask, request
+from flask_ngrok import run_with_ngrok
 
 with open('config.json', 'r') as config_file:
     data = config_file.read()
@@ -11,14 +13,12 @@ config = json.loads(data)
 
 def test_slack_sig(request):
     """Verify Slack Signature against Signing Secret"""
-    timestamp = request.headers['X-Slack-Request-Timestamp']
-    if int(time.time()) - int(timestamp) > 60*5:
-        return False
-
     slack_signing_secret = config['SLACK_SIGNING_SECRET']
     slack_signature = request.headers['X-Slack-Signature']
+    timestamp = request.headers['X-Slack-Request-Timestamp']
     request_body = request.get_data(as_text=True)
     sig_basestring = 'v0:' + timestamp + ':' + request_body
+
     hmac_obj = hmac.new(slack_signing_secret.encode(), sig_basestring.encode(), hashlib.sha256)
     calc_signature = 'v0=' + hmac_obj.hexdigest()
 
@@ -56,7 +56,10 @@ def format_message(response):
             }
     return message
 
-def kg_query_to_slack(request):
+app = Flask(__name__)
+#run_with_ngrok(app)
+@app.route("/", methods=['POST'])
+def kg_query_to_slack():
     """Main func."""
     if not test_slack_sig(request):
         return jsonify({"response_type": "in_channel", "text":"Invalid Sig"})
@@ -65,3 +68,6 @@ def kg_query_to_slack(request):
     message = format_message(response)
 
     return jsonify(message)
+
+if __name__ == '__main__':
+    app.run()
